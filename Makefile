@@ -4,6 +4,7 @@ PACKAGES = analyticsdataserver analytics_data_api
 DATABASES = default analytics
 ELASTICSEARCH_VERSION = 1.5.2
 ELASTICSEARCH_PORT = 9223
+PYTHON_ENV=py27
 
 .PHONY: requirements develop clean diff.report view.diff.report quality static
 
@@ -36,25 +37,22 @@ upgrade: ## update the requirements/*.txt files with the latest packages satisfy
 	pip-compile --upgrade -o requirements/dev.txt requirements/dev.in
 	pip-compile --upgrade -o requirements/production.txt requirements/production.in
 	pip-compile --upgrade -o requirements/test.txt requirements/test.in
+	pip-compile --upgrade -o requirements/travis.txt requirements/travis.in
 	scripts/post-pip-compile.sh \
         requirements/pip_tools.txt \
 	    requirements/base.txt \
 	    requirements/doc.txt \
 	    requirements/dev.txt \
 	    requirements/production.txt \
-	    requirements/test.txt
+	    requirements/test.txt \
+	    requirements/travis.txt
 
 clean:
-	find . -name '*.pyc' -delete
-	coverage erase
+	tox -e $(PYTHON_ENV)-clean
 
 test: clean
 	if [ -e elasticsearch-$(ELASTICSEARCH_VERSION) ]; then curl --silent --head http://localhost:$(ELASTICSEARCH_PORT)/roster_test > /dev/null || make test.run_elasticsearch; fi  # Launch ES if installed and not running
-	coverage run -m pytest --ignore=analyticsdataserver/settings \
-		$(PACKAGES)
-	export COVERAGE_DIR=$(COVERAGE_DIR) && \
-		coverage html && \
-		coverage xml
+	tox -e $(PYTHON_ENV)-tests
 
 diff.report:
 	diff-cover $(COVERAGE_DIR)/coverage.xml --html-report $(COVERAGE_DIR)/diff_cover.html
@@ -66,12 +64,13 @@ view.diff.report:
 	xdg-open file:///$(COVERAGE_DIR)/diff_quality_pep8.html
 	xdg-open file:///$(COVERAGE_DIR)/diff_quality_pylint.html
 
-quality:
-	pep8 $(PACKAGES)
-	pylint $(PACKAGES)
+run_check_isort:
+	tox -e $(PYTHON_ENV)-check_isort
 
-	# Ignore module level docstrings and all test files
-	#pep257 --ignore=D100,D203 --match='(?!test).*py' $(PACKAGES)
+run_pylint:
+	tox -e $(PYTHON_ENV)-pylint
+
+quality: run_pylint
 
 validate: test.requirements test quality
 
